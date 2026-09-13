@@ -14,6 +14,7 @@ type DayReport struct {
 	Day      Day
 	Balances []AccountClosing
 	Fees     []string
+	Interest []string
 	Auths    []string
 	Errors   []string
 }
@@ -29,6 +30,7 @@ func (r Report) Print(w io.Writer) {
 			fmt.Fprintf(w, "  %-9s closing  %s\n", b.Account, b.Closing.Display())
 		}
 		lines(w, "fees", d.Fees)
+		lines(w, "interest", d.Interest)
 		lines(w, "auths", d.Auths)
 		lines(w, "errors", d.Errors)
 		fmt.Fprintln(w)

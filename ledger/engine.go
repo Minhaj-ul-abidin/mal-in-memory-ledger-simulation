@@ -1,6 +1,9 @@
 package ledger
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 const window = 6
 
@@ -89,13 +92,20 @@ func Replay(events []Event) Report {
 			}
 		}
 
+		if d == window {
+			for _, a := range accounts {
+				capitalize(l, a.ID, d)
+			}
+		}
+
 		for _, a := range accounts {
 			day.Balances = append(day.Balances, AccountClosing{
 				Account: a.ID,
 				Closing: l.Closing(a.ID, d, d),
 			})
 		}
-		day.Fees = feesBookedOn(l, d)
+		day.Fees = bookedOn(l, d, Fee, FeeReversal)
+		day.Interest = bookedOn(l, d, Accrual, AccrualAdjustment, Capitalization)
 		for _, h := range holds {
 			day.Auths = append(day.Auths, h.ID+" "+h.State.String()+" "+h.Amount.Display())
 		}
@@ -116,23 +126,41 @@ func reopenFrom(l *Ledger, account string, today Day) Day {
 	return from
 }
 
-// Fees are reported on the day they are booked, carrying the day they belong to.
-// A restatement assesses an earlier day today, and that has to be visible.
-func feesBookedOn(l *Ledger, today Day) []string {
+// capitalize posts one credit carrying the sum of the rounded daily accruals.
+// Building the total out of them is what makes them sum to it exactly; deriving
+// it independently would leave a remainder to reconcile away.
+//
+// It runs after the last assessment, so the capitalized credit never lands in a
+// trigger and interest never earns interest.
+func capitalize(l *Ledger, account string, day Day) {
+	total := Zero(l.Currency(account))
+	for k := Day(1); k <= day; k++ {
+		total = total.Add(l.Assessed(account, k, InterestAssessment))
+	}
+	if total.IsZero() {
+		return
+	}
+	l.Append(Entry{Account: account, Kind: Capitalization, Amount: total, BookedOn: day, ValueDate: day})
+}
+
+var entryLabels = map[EntryKind]string{
+	Fee:               "fee",
+	FeeReversal:       "fee reversed",
+	Accrual:           "interest accrued",
+	AccrualAdjustment: "interest adjusted",
+	Capitalization:    "interest capitalized",
+}
+
+// Assessments are reported on the day they are booked, carrying the day they
+// belong to. A restatement assesses an earlier day today, and that has to show.
+func bookedOn(l *Ledger, today Day, kinds ...EntryKind) []string {
 	var out []string
 	for _, e := range l.Entries() {
-		if e.BookedOn != today || (e.Kind != Fee && e.Kind != FeeReversal) {
+		if e.BookedOn != today || !slices.Contains(kinds, e.Kind) {
 			continue
 		}
-		amount := e.Amount
-		if amount.IsNegative() {
-			amount = amount.Neg()
-		}
-		label := "fee"
-		if e.Kind == FeeReversal {
-			label = "fee reversed"
-		}
-		out = append(out, fmt.Sprintf("%s %s %s (value date Day %d)", e.Account, label, amount.Display(), e.ValueDate))
+		out = append(out, fmt.Sprintf("%s %s %s (value date Day %d)",
+			e.Account, entryLabels[e.Kind], e.Amount.Display(), e.ValueDate))
 	}
 	return out
 }

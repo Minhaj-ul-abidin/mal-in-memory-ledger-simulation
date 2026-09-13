@@ -262,3 +262,61 @@ func TestReversalUndoesEveryFeeItCaused(t *testing.T) {
 		t.Errorf("accruals total %s, want %s", total, want)
 	}
 }
+
+// The capitalized credit is built out of the rounded daily accruals, so they sum
+// to it exactly by construction. Deriving it from the balances independently is
+// what leaves a remainder no event ever moved.
+func TestCapitalizationEqualsTheSumOfAccruals(t *testing.T) {
+	for _, tc := range []struct {
+		ccy     Currency
+		account string
+		daily   []string
+		want    string
+	}{
+		{AED, "ACC-001", []string{"0.10", "0.10", "0.26", "0.19", "0.19", "0.19"}, "1.03"},
+		{BHD, "ACC-002", []string{"0.000", "0.000", "0.000", "0.000", "0.004", "0.004"}, "0.008"},
+	} {
+		t.Run(tc.ccy.Code, func(t *testing.T) {
+			l := New()
+			l.Open(tc.account, tc.ccy)
+			for i, amount := range tc.daily {
+				day := Day(i + 1)
+				l.Append(Entry{
+					Account: tc.account, Kind: Accrual, Amount: Amount(tc.ccy, amount),
+					BookedOn: day, ValueDate: day,
+				})
+			}
+
+			capitalize(l, tc.account, 6)
+
+			entries := l.Entries()
+			credit := entries[len(entries)-1]
+			if credit.Kind != Capitalization {
+				t.Fatalf("last entry is %s, want %s", credit.Kind, Capitalization)
+			}
+			if want := Amount(tc.ccy, tc.want); !credit.Amount.Equal(want) {
+				t.Errorf("capitalized %s, want %s", credit.Amount, want)
+			}
+			// Accruals are memo entries, so the balance is the capitalized credit alone.
+			if got, want := l.Closing(tc.account, 6, 6), Amount(tc.ccy, tc.want); !got.Equal(want) {
+				t.Errorf("closing = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// The whole stream, end to end. Both accounts close where they would have closed
+// had E7 never been sent, plus the interest they earned along the way.
+func TestReplayClosesTheWindowWhereItStarted(t *testing.T) {
+	r := Replay(Stream())
+	if len(r.Days) != window {
+		t.Fatalf("replayed %d days, want %d", len(r.Days), window)
+	}
+
+	want := map[string]string{"ACC-001": "AED 466.03", "ACC-002": "BHD 10.008"}
+	for _, b := range r.Days[window-1].Balances {
+		if got := b.Closing.Display(); got != want[b.Account] {
+			t.Errorf("%s closed at %s, want %s", b.Account, got, want[b.Account])
+		}
+	}
+}
