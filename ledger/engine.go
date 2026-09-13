@@ -40,7 +40,7 @@ func Replay(events []Event) Report {
 	return r
 }
 
-// Settlements and reversals fall through until the next step.
+// Reversals fall through until the next step.
 func book(l *Ledger, holds *Holds, e Event, day *DayReport) {
 	switch e.Type {
 	case CreditEvent:
@@ -49,6 +49,8 @@ func book(l *Ledger, holds *Holds, e Event, day *DayReport) {
 		post(l, e, Debit, e.Amount.Neg())
 	case AuthorizationEvent:
 		authorize(l, holds, e, day)
+	case SettlementEvent:
+		settle(l, holds, e, day)
 	}
 }
 
@@ -64,6 +66,33 @@ func authorize(l *Ledger, holds *Holds, e Event, day *DayReport) {
 		h.State = HoldActive
 	}
 	*holds = append(*holds, h)
+}
+
+// A settlement moves money only against a hold that is open and large enough.
+// Every rejection is recorded and nothing leaves the account.
+func settle(l *Ledger, holds *Holds, e Event, day *DayReport) {
+	h := holds.Find(e.Auth)
+	switch {
+	case h == nil:
+		day.Errors = append(day.Errors,
+			e.ID+": settlement references unknown authorization "+e.Auth+", rejected")
+		return
+	case h.State != HoldActive:
+		day.Errors = append(day.Errors,
+			e.ID+": authorization "+e.Auth+" is already "+h.State.String()+", rejected")
+		return
+	case e.Amount.Sub(h.Amount).IsPositive():
+		day.Errors = append(day.Errors,
+			e.ID+": settlement "+e.Amount.Display()+" exceeds the "+h.Amount.Display()+" hold on "+e.Auth+", rejected")
+		return
+	}
+
+	post(l, e, Debit, e.Amount.Neg())
+	if e.Amount.Equal(h.Amount) {
+		h.State = HoldSettled
+	} else {
+		h.State = HoldPartiallySettled
+	}
 }
 
 func post(l *Ledger, e Event, k EntryKind, amount Money) {

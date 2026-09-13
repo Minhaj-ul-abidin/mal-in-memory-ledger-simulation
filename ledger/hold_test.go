@@ -64,3 +64,59 @@ func TestAuthorizeDecidesOnAvailableBalance(t *testing.T) {
 		})
 	}
 }
+
+// The remainder releases and the authorization closes. Holding 15.00 back would
+// need an expiry rule to ever let go of it, and the spec gives none.
+func TestSettlementBelowHoldClosesTheAuthorization(t *testing.T) {
+	l := fundedLedger(t, "650.00")
+	holds := Holds{{ID: "Auth-A", Account: "ACC-001", Amount: Amount(AED, "200.00"), State: HoldActive}}
+	day := DayReport{Day: 4}
+
+	settle(l, &holds, Event{
+		ID: "E5", Type: SettlementEvent, BookedOn: 4, ValueDate: 4,
+		Account: "ACC-001", Amount: Amount(AED, "185.00"), Auth: "Auth-A",
+	}, &day)
+
+	if got, want := l.Closing("ACC-001", 4, 4), Amount(AED, "465.00"); !got.Equal(want) {
+		t.Errorf("closing = %s, want %s", got, want)
+	}
+	if got := holds.Find("Auth-A").State; got != HoldPartiallySettled {
+		t.Errorf("state = %s, want %s", got, HoldPartiallySettled)
+	}
+	if got, want := l.Available(holds, "ACC-001", 4), Amount(AED, "465.00"); !got.Equal(want) {
+		t.Errorf("available = %s, want %s: the 15.00 remainder must be released", got, want)
+	}
+}
+
+// Criterion 4. The money must not leave the account, and the rejection is itself
+// something the ledger has to be able to show.
+func TestSettlementRejectionsMoveNoMoney(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		auth  string
+		state HoldState
+		amt   string
+	}{
+		{"unknown authorization", "Auth-Z", HoldActive, "180.00"},
+		{"settlement above the hold", "Auth-A", HoldActive, "250.00"},
+		{"authorization already closed", "Auth-A", HoldSettled, "185.00"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := fundedLedger(t, "650.00")
+			holds := Holds{{ID: "Auth-A", Account: "ACC-001", Amount: Amount(AED, "200.00"), State: tc.state}}
+			day := DayReport{Day: 4}
+
+			settle(l, &holds, Event{
+				ID: "E6", Type: SettlementEvent, BookedOn: 4, ValueDate: 4,
+				Account: "ACC-001", Amount: Amount(AED, tc.amt), Auth: tc.auth,
+			}, &day)
+
+			if got, want := l.Closing("ACC-001", 4, 4), Amount(AED, "650.00"); !got.Equal(want) {
+				t.Errorf("closing = %s, want %s: no money may move", got, want)
+			}
+			if len(day.Errors) != 1 {
+				t.Errorf("rejections must be recorded, got %d errors", len(day.Errors))
+			}
+		})
+	}
+}
