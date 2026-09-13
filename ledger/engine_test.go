@@ -7,10 +7,12 @@ import "testing"
 func TestBookingSplitsInstalments(t *testing.T) {
 	l := New()
 	l.Open("ACC-002", BHD)
-	book(l, Event{
+	var holds Holds
+	day := DayReport{Day: 5}
+	book(l, &holds, Event{
 		ID: "E10", Type: CreditEvent, BookedOn: 5, ValueDate: 5,
 		Account: "ACC-002", Amount: Amount(BHD, "10.000"), Parts: 3,
-	})
+	}, &day)
 
 	entries := l.Entries()
 	if len(entries) != 3 {
@@ -35,10 +37,12 @@ func TestBookingSplitsInstalments(t *testing.T) {
 func TestBookingNegatesDebitAndKeepsBothDates(t *testing.T) {
 	l := New()
 	l.Open("ACC-001", AED)
-	book(l, Event{
+	var holds Holds
+	day := DayReport{Day: 5}
+	book(l, &holds, Event{
 		ID: "E7", Type: DebitEvent, BookedOn: 5, ValueDate: 2,
 		Account: "ACC-001", Amount: Amount(AED, "620.00"),
-	})
+	}, &day)
 
 	e := l.Entries()[0]
 	if want := Amount(AED, "-620.00"); !e.Amount.Equal(want) {
