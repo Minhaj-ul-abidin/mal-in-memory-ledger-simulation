@@ -68,6 +68,13 @@ var accounts = []struct {
 }
 
 func Replay(events []Event) Report {
+	_, _, r := replay(events)
+	return r
+}
+
+// replay also hands back the ledger and the holds it built. Replay returns only
+// the report; the criteria are asserted against the entries behind it.
+func replay(events []Event) (*Ledger, Holds, Report) {
 	l := New()
 	for _, a := range accounts {
 		l.Open(a.ID, a.Ccy)
@@ -123,7 +130,7 @@ func Replay(events []Event) Report {
 		}
 		r.Restated = append(r.Restated, rd)
 	}
-	return r
+	return l, holds, r
 }
 
 // reopenFrom is the earliest day that anything booked today belongs to. Called
