@@ -53,3 +53,18 @@ func (l *Ledger) Closing(account string, valueDay, asOf Day) Money {
 
 // Entries returns a copy, so the store stays append-only from the outside.
 func (l *Ledger) Entries() []Entry { return slices.Clone(l.entries) }
+
+// Assessed is the net of what day closes have already booked for this account
+// and value day. Restatement diffs against it rather than re-posting a figure.
+func (l *Ledger) Assessed(account string, day Day, a Assessment) Money {
+	total := Zero(l.Currency(account))
+	for _, e := range l.entries {
+		if e.Account != account || e.ValueDate != day {
+			continue
+		}
+		if got, ok := e.Kind.assessment(); ok && got == a {
+			total = total.Add(e.Amount)
+		}
+	}
+	return total
+}

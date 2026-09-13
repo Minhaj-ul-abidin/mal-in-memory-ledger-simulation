@@ -47,3 +47,22 @@ type Entry struct {
 
 	Ref int // Seq of the entry this one reverses, 0 if none
 }
+
+// An Assessment is what a day close produces. Fee and interest corrections are
+// keyed apart so a fee delta can never net against an interest delta.
+type Assessment int
+
+const (
+	FeeAssessment Assessment = iota
+	InterestAssessment
+)
+
+func (k EntryKind) assessment() (Assessment, bool) {
+	switch k {
+	case Fee, FeeReversal:
+		return FeeAssessment, true
+	case Accrual, AccrualAdjustment:
+		return InterestAssessment, true
+	}
+	return 0, false
+}

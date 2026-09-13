@@ -52,3 +52,67 @@ func TestBookingNegatesDebitAndKeepsBothDates(t *testing.T) {
 		t.Errorf("dates = booked %d, valued %d; want booked 5, valued 2", e.BookedOn, e.ValueDate)
 	}
 }
+
+func ledgerAt(t *testing.T, day Day, amount string) *Ledger {
+	t.Helper()
+	l := New()
+	l.Open("ACC-001", AED)
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, amount), BookedOn: day, ValueDate: day})
+	return l
+}
+
+func TestDayCloseFeeAndInterest(t *testing.T) {
+	for _, tc := range []struct {
+		balance, fee, accrual, why string
+	}{
+		{"250.00", "0.00", "0.10", "positive, exact"},
+		{"650.00", "0.00", "0.26", "positive, exact"},
+		{"465.00", "0.00", "0.19", "0.186 rounds half-up"},
+		{"5.00", "0.00", "0.00", "0.002 rounds away to nothing"},
+		{"0.00", "0.00", "0.00", "zero is neither negative nor positive"},
+		{"-155.00", "-25.00", "0.00", "negative takes the fee and earns nothing"},
+	} {
+		t.Run(tc.why, func(t *testing.T) {
+			l := ledgerAt(t, 5, tc.balance)
+			assess(l, "ACC-001", 5, 5)
+
+			if got, want := l.Assessed("ACC-001", 5, FeeAssessment), Amount(AED, tc.fee); !got.Equal(want) {
+				t.Errorf("fee = %s, want %s", got, want)
+			}
+			if got, want := l.Assessed("ACC-001", 5, InterestAssessment), Amount(AED, tc.accrual); !got.Equal(want) {
+				t.Errorf("accrual = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// A day's own fee is excluded from the balance that triggers it. Without that,
+// re-closing an overdrawn day charges it again, and again.
+func TestOwnFeeDoesNotTriggerItself(t *testing.T) {
+	l := ledgerAt(t, 5, "-155.00")
+	assess(l, "ACC-001", 5, 5)
+	assess(l, "ACC-001", 5, 5)
+	assess(l, "ACC-001", 5, 5)
+
+	if got, want := l.Assessed("ACC-001", 5, FeeAssessment), Amount(AED, "-25.00"); !got.Equal(want) {
+		t.Fatalf("fee after three closes = %s, want %s", got, want)
+	}
+	if got, want := l.Closing("ACC-001", 5, 5), Amount(AED, "-180.00"); !got.Equal(want) {
+		t.Errorf("closing = %s, want %s", got, want)
+	}
+}
+
+// Fees from earlier days are ordinary debits and carry forward into later
+// triggers. This is what puts Day 4 at -180.00 rather than -155.00.
+func TestEarlierFeesCarryIntoLaterTriggers(t *testing.T) {
+	l := ledgerAt(t, 1, "-10.00")
+	assess(l, "ACC-001", 1, 1)
+	assess(l, "ACC-001", 2, 2)
+
+	if got, want := l.Assessed("ACC-001", 2, FeeAssessment), Amount(AED, "-25.00"); !got.Equal(want) {
+		t.Errorf("day 2 fee = %s, want %s", got, want)
+	}
+	if got, want := l.Closing("ACC-001", 2, 2), Amount(AED, "-60.00"); !got.Equal(want) {
+		t.Errorf("closing = %s, want %s: -10.00 less two fees", got, want)
+	}
+}
