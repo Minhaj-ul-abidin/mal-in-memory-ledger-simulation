@@ -1,5 +1,7 @@
 package ledger
 
+import "fmt"
+
 const window = 6
 
 // 0.04% per day, held as a pair so the interest never leaves integer arithmetic.
@@ -78,8 +80,13 @@ func Replay(events []Event) Report {
 			}
 		}
 
+		// Ascending from the earliest day today's bookings belong to. Day k reads
+		// only days <= k, so by the time the loop reaches k+1 the day-k delta is
+		// already posted and one forward pass is enough.
 		for _, a := range accounts {
-			assess(l, a.ID, d, d)
+			for k := reopenFrom(l, a.ID, d); k <= d; k++ {
+				assess(l, a.ID, k, d)
+			}
 		}
 
 		for _, a := range accounts {
@@ -87,16 +94,47 @@ func Replay(events []Event) Report {
 				Account: a.ID,
 				Closing: l.Closing(a.ID, d, d),
 			})
-			if fee := l.Assessed(a.ID, d, FeeAssessment); !fee.IsZero() {
-				day.Fees = append(day.Fees, a.ID+" "+fee.Neg().Display())
-			}
 		}
+		day.Fees = feesBookedOn(l, d)
 		for _, h := range holds {
 			day.Auths = append(day.Auths, h.ID+" "+h.State.String()+" "+h.Amount.Display())
 		}
 		r.Days = append(r.Days, day)
 	}
 	return r
+}
+
+// reopenFrom is the earliest day that anything booked today belongs to. Called
+// before assessing, so it sees only booked events and not the deltas to come.
+func reopenFrom(l *Ledger, account string, today Day) Day {
+	from := today
+	for _, e := range l.Entries() {
+		if e.Account == account && e.BookedOn == today && e.ValueDate < from {
+			from = e.ValueDate
+		}
+	}
+	return from
+}
+
+// Fees are reported on the day they are booked, carrying the day they belong to.
+// A restatement assesses an earlier day today, and that has to be visible.
+func feesBookedOn(l *Ledger, today Day) []string {
+	var out []string
+	for _, e := range l.Entries() {
+		if e.BookedOn != today || (e.Kind != Fee && e.Kind != FeeReversal) {
+			continue
+		}
+		amount := e.Amount
+		if amount.IsNegative() {
+			amount = amount.Neg()
+		}
+		label := "fee"
+		if e.Kind == FeeReversal {
+			label = "fee reversed"
+		}
+		out = append(out, fmt.Sprintf("%s %s %s (value date Day %d)", e.Account, label, amount.Display(), e.ValueDate))
+	}
+	return out
 }
 
 // Reversals fall through until the next step.

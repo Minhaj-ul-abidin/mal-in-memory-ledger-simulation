@@ -116,3 +116,55 @@ func TestEarlierFeesCarryIntoLaterTriggers(t *testing.T) {
 		t.Errorf("closing = %s, want %s: -10.00 less two fees", got, want)
 	}
 }
+
+// A backdated debit reopens its own day and every day after it. Three of those
+// close negative so three fees stand, and Day 3 escapes: the Day 3 credit clears
+// it even after the Day 2 fee has been taken out of it. This is criterion 2.
+func TestBackdatedEntryReopensEveryDayAfterIt(t *testing.T) {
+	l := New()
+	l.Open("ACC-001", AED)
+
+	// Days 1 to 4, closed with what was known at the time.
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, "1200.00"), BookedOn: 1, ValueDate: 1})
+	l.Append(Entry{Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-950.00"), BookedOn: 1, ValueDate: 1})
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, "400.00"), BookedOn: 3, ValueDate: 3})
+	l.Append(Entry{Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-185.00"), BookedOn: 4, ValueDate: 4})
+	for d := Day(1); d <= 4; d++ {
+		assess(l, "ACC-001", d, d)
+	}
+	if got, want := l.Assessed("ACC-001", 2, InterestAssessment), Amount(AED, "0.10"); !got.Equal(want) {
+		t.Fatalf("day 2 accrued %s before the backdated debit, want %s", got, want)
+	}
+
+	// E7 arrives on Day 5 belonging to Day 2.
+	l.Append(Entry{Source: "E7", Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-620.00"), BookedOn: 5, ValueDate: 2})
+	if got := reopenFrom(l, "ACC-001", 5); got != 2 {
+		t.Fatalf("reopenFrom = %d, want 2", got)
+	}
+	for k := reopenFrom(l, "ACC-001", 5); k <= 5; k++ {
+		assess(l, "ACC-001", k, 5)
+	}
+
+	for _, tc := range []struct {
+		day               Day
+		fee, closing, why string
+	}{
+		{2, "-25.00", "-395.00", "-370.00 before its own fee"},
+		{3, "0.00", "5.00", "+400 clears it, the Day 2 fee cuts it to +5.00"},
+		{4, "-25.00", "-205.00", "-180.00 before its own fee"},
+		{5, "-25.00", "-230.00", "-205.00 before its own fee"},
+	} {
+		if got, want := l.Assessed("ACC-001", tc.day, FeeAssessment), Amount(AED, tc.fee); !got.Equal(want) {
+			t.Errorf("day %d fee = %s, want %s (%s)", tc.day, got, want, tc.why)
+		}
+		if got, want := l.Closing("ACC-001", tc.day, 5), Amount(AED, tc.closing); !got.Equal(want) {
+			t.Errorf("day %d closing = %s, want %s (%s)", tc.day, got, want, tc.why)
+		}
+	}
+
+	// Day 2 closed negative once reopened, so the interest it had accrued is
+	// adjusted away rather than left standing beside a fee.
+	if got := l.Assessed("ACC-001", 2, InterestAssessment); !got.IsZero() {
+		t.Errorf("day 2 accrual = %s, want 0.00", got)
+	}
+}
