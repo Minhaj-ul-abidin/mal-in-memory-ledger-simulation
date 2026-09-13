@@ -60,6 +60,30 @@ The spec says amounts are stored and rounded to their own precision. It does not
 say how a tie resolves. See `AMBIGUITIES.md` entry 7.
 
 
+### Interest rounding — the running total, not each day
+
+A day's accrual is the increment of the rounded running total, not the rounded
+figure for that day taken on its own.
+
+**Why not round each day.** Anything smaller than half a minor unit rounds to
+nothing and is gone for good. AED 5.00 earns 0.002 a day, which rounds to 0.00,
+so the account earns nothing for as long as the money sits there — a hundred days
+of it still pays zero.
+
+**It is the rule the split already follows.** Residuals are allocated, never
+discarded, and that has to hold in both directions. Rounding per day enforced it
+on the instalments, where the risk is inventing 0.002 nobody moved, and broke it
+on the interest, where the risk is confiscating the same amount every day.
+
+**How.** Interest accumulates as integer numerators, `balance × 4`, and is
+divided and rounded once over the whole run. A day posts the difference between
+the total through today and the total through yesterday, so the daily figures
+still sum to the capitalized credit exactly.
+
+**What it costs.** The window total is `1.02` rather than `1.03`, and ACC-001
+closes at `466.02`. The exact interest over the six days is `1.018`; rounding
+each day separately reached `1.03` by rounding `0.186` up on three days.
+
 ### Money representation — `int64` minor units
 
 `AED 1200.00` is stored as `120000`. `BHD 10.000` is stored as `10000`.

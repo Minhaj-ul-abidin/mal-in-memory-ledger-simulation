@@ -92,3 +92,19 @@ func TestSplitSumsForAwkwardCases(t *testing.T) {
 		}
 	}
 }
+
+// No tie occurs anywhere in the replay, so nothing in the output shows which way
+// one resolves. AED 12.50 at 0.04% is exactly half a fils, which is the case the
+// rounding mode has to be pinned against.
+func TestRateResolvesTiesAwayFromZero(t *testing.T) {
+	for _, tc := range []struct{ in, want, why string }{
+		{"12.50", "0.01", "0.005 exactly"},
+		{"-12.50", "-0.01", "0.005 exactly, away from zero rather than toward it"},
+		{"37.50", "0.02", "0.015 exactly, and not 0.01 as half-even would give"},
+	} {
+		got := Amount(AED, tc.in).Rate(4, 10000)
+		if want := Amount(AED, tc.want); !got.Equal(want) {
+			t.Errorf("%s at 0.04%% = %s, want %s (%s)", tc.in, got, want, tc.why)
+		}
+	}
+}
