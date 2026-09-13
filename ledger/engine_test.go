@@ -168,3 +168,97 @@ func TestBackdatedEntryReopensEveryDayAfterIt(t *testing.T) {
 		t.Errorf("day 2 accrual = %s, want 0.00", got)
 	}
 }
+
+// The original is left exactly as it was. A reversal that edited it would be an
+// UPDATE on a booked entry, which is the one thing this design forbids.
+func TestReversalPostsContraAtOriginalValueDate(t *testing.T) {
+	l := New()
+	l.Open("ACC-001", AED)
+	original := l.Append(Entry{
+		Source: "E7", Account: "ACC-001", Kind: Debit,
+		Amount: Amount(AED, "-620.00"), BookedOn: 5, ValueDate: 2,
+	})
+
+	day := DayReport{Day: 6}
+	reverse(l, Event{ID: "E9", Type: ReversalEvent, BookedOn: 6, ValueDate: 2, Account: "ACC-001", Reverses: "E7"}, &day)
+
+	entries := l.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("ledger holds %d entries, want 2: the original plus its contra", len(entries))
+	}
+	if got := entries[0]; !got.Amount.Equal(Amount(AED, "-620.00")) || got.ValueDate != 2 || got.BookedOn != 5 {
+		t.Errorf("original was modified: %+v", got)
+	}
+
+	contra := entries[1]
+	if contra.Kind != Reversal {
+		t.Errorf("kind = %s, want %s", contra.Kind, Reversal)
+	}
+	if want := Amount(AED, "620.00"); !contra.Amount.Equal(want) {
+		t.Errorf("amount = %s, want %s", contra.Amount, want)
+	}
+	if contra.ValueDate != 2 {
+		t.Errorf("value date = %d, want 2: a contra carries the original's value date", contra.ValueDate)
+	}
+	if contra.BookedOn != 6 {
+		t.Errorf("booked on = %d, want 6", contra.BookedOn)
+	}
+	if contra.Ref != original.Seq {
+		t.Errorf("ref = %d, want %d", contra.Ref, original.Seq)
+	}
+}
+
+// Criterion 6. Under back-valuation the fees E7 caused do not merely stop being
+// charged: each is reversed, and every day closes where it would have closed had
+// E7 never been sent.
+func TestReversalUndoesEveryFeeItCaused(t *testing.T) {
+	l := New()
+	l.Open("ACC-001", AED)
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, "1200.00"), BookedOn: 1, ValueDate: 1})
+	l.Append(Entry{Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-950.00"), BookedOn: 1, ValueDate: 1})
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, "400.00"), BookedOn: 3, ValueDate: 3})
+	l.Append(Entry{Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-185.00"), BookedOn: 4, ValueDate: 4})
+	for d := Day(1); d <= 4; d++ {
+		assess(l, "ACC-001", d, d)
+	}
+
+	l.Append(Entry{Source: "E7", Account: "ACC-001", Kind: Debit, Amount: Amount(AED, "-620.00"), BookedOn: 5, ValueDate: 2})
+	for k := reopenFrom(l, "ACC-001", 5); k <= 5; k++ {
+		assess(l, "ACC-001", k, 5)
+	}
+
+	day := DayReport{Day: 6}
+	reverse(l, Event{ID: "E9", Type: ReversalEvent, BookedOn: 6, ValueDate: 2, Account: "ACC-001", Reverses: "E7"}, &day)
+	for k := reopenFrom(l, "ACC-001", 6); k <= 6; k++ {
+		assess(l, "ACC-001", k, 6)
+	}
+
+	total := Zero(AED)
+	for _, tc := range []struct {
+		day              Day
+		closing, accrual string
+	}{
+		{1, "250.00", "0.10"},
+		{2, "250.00", "0.10"},
+		{3, "650.00", "0.26"},
+		{4, "465.00", "0.19"},
+		{5, "465.00", "0.19"},
+		{6, "465.00", "0.19"},
+	} {
+		if got, want := l.Closing("ACC-001", tc.day, 6), Amount(AED, tc.closing); !got.Equal(want) {
+			t.Errorf("day %d closing = %s, want %s", tc.day, got, want)
+		}
+		accrual := l.Assessed("ACC-001", tc.day, InterestAssessment)
+		if want := Amount(AED, tc.accrual); !accrual.Equal(want) {
+			t.Errorf("day %d accrual = %s, want %s", tc.day, accrual, want)
+		}
+		if fee := l.Assessed("ACC-001", tc.day, FeeAssessment); !fee.IsZero() {
+			t.Errorf("day %d fee = %s, want 0.00: every fee E7 caused must reverse", tc.day, fee)
+		}
+		total = total.Add(accrual)
+	}
+
+	if want := Amount(AED, "1.03"); !total.Equal(want) {
+		t.Errorf("accruals total %s, want %s", total, want)
+	}
+}

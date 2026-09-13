@@ -137,7 +137,6 @@ func feesBookedOn(l *Ledger, today Day) []string {
 	return out
 }
 
-// Reversals fall through until the next step.
 func book(l *Ledger, holds *Holds, e Event, day *DayReport) {
 	switch e.Type {
 	case CreditEvent:
@@ -148,6 +147,34 @@ func book(l *Ledger, holds *Holds, e Event, day *DayReport) {
 		authorize(l, holds, e, day)
 	case SettlementEvent:
 		settle(l, holds, e, day)
+	case ReversalEvent:
+		reverse(l, e, day)
+	}
+}
+
+// A reversal is a new contra entry carrying the original's value date and a
+// reference to it. The original is left exactly as it was. One event can have
+// posted several entries, and reversing it reverses all of them.
+func reverse(l *Ledger, e Event, day *DayReport) {
+	var found bool
+	for _, o := range l.Entries() {
+		if o.Source != e.Reverses {
+			continue
+		}
+		found = true
+		l.Append(Entry{
+			Source:    e.ID,
+			Account:   o.Account,
+			Kind:      Reversal,
+			Amount:    o.Amount.Neg(),
+			BookedOn:  e.BookedOn,
+			ValueDate: o.ValueDate,
+			Ref:       o.Seq,
+		})
+	}
+	if !found {
+		day.Errors = append(day.Errors,
+			e.ID+": nothing to reverse, "+e.Reverses+" is not in the ledger")
 	}
 }
 
