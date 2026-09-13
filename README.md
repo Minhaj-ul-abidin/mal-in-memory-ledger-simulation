@@ -2,6 +2,19 @@
 
 Design and entity at design.md
 
+## Running it
+
+```
+go run ./cmd/replay
+go test ./...
+```
+
+`go test ./...` reports one failure and that is expected.
+`TestEveryDeclineIsJustifiableFromTheRestatedLedger` in
+`ledger/restatement_test.go` is the failing test the brief asks for. It is aimed
+at this design, not at a wrong criterion, and what it reveals is annotated above
+it. Every other test passes.
+
 ## The other documents
 
 | File | What it holds |
