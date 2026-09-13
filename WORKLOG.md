@@ -1,4 +1,4 @@
 (All time GMT+5:30)
 September 13th, 2026 2:30 AM - Read the specs and added the two rejection which can be drived directly from the specs.  ( backdated entry ) 
 September 13th, 2026 6:40 PM - Finalised the assumptions and rejections core policies where contradictions were arrising according to the specs, and going through the stream mutiple times reassesing my aproaches. Starting the archtecture finalisation before ever writing any code.
- 
+September 13th, 2026 8:42 PM - finalising the design and entities and what matter when implementing. This i would have written only locally but as a worklog i want to commit this first. 
