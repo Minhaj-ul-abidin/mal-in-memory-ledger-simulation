@@ -111,6 +111,18 @@ func Replay(events []Event) Report {
 		}
 		r.Days = append(r.Days, day)
 	}
+
+	// The same days again, as they stand once every backdated entry has landed.
+	for d := Day(1); d <= window; d++ {
+		rd := RestatedDay{Day: d}
+		for _, a := range accounts {
+			rd.Balances = append(rd.Balances, AccountClosing{
+				Account: a.ID,
+				Closing: l.Closing(a.ID, d, window),
+			})
+		}
+		r.Restated = append(r.Restated, rd)
+	}
 	return r
 }
 

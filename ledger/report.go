@@ -19,8 +19,17 @@ type DayReport struct {
 	Errors   []string
 }
 
+// RestatedDay is a day's closing as known at the end of the window, which is a
+// different figure from what that day closed at when it closed. Days reopened by
+// a backdated entry only show their final value here.
+type RestatedDay struct {
+	Day      Day
+	Balances []AccountClosing
+}
+
 type Report struct {
-	Days []DayReport
+	Days     []DayReport
+	Restated []RestatedDay
 }
 
 func (r Report) Print(w io.Writer) {
@@ -33,6 +42,21 @@ func (r Report) Print(w io.Writer) {
 		lines(w, "interest", d.Interest)
 		lines(w, "auths", d.Auths)
 		lines(w, "errors", d.Errors)
+		fmt.Fprintln(w)
+	}
+	r.printRestated(w)
+}
+
+func (r Report) printRestated(w io.Writer) {
+	if len(r.Restated) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "Restated at close of Day %d\n", r.Restated[len(r.Restated)-1].Day)
+	for _, d := range r.Restated {
+		fmt.Fprintf(w, "  Day %d  ", d.Day)
+		for _, b := range d.Balances {
+			fmt.Fprintf(w, "  %-9s %-14s", b.Account, b.Closing.Display())
+		}
 		fmt.Fprintln(w)
 	}
 }
