@@ -242,7 +242,7 @@ func TestReversalUndoesEveryFeeItCaused(t *testing.T) {
 		{2, "250.00", "0.10"},
 		{3, "650.00", "0.26"},
 		{4, "465.00", "0.19"},
-		{5, "465.00", "0.19"},
+		{5, "465.00", "0.18"},
 		{6, "465.00", "0.19"},
 	} {
 		if got, want := l.Closing("ACC-001", tc.day, 6), Amount(AED, tc.closing); !got.Equal(want) {
@@ -258,7 +258,7 @@ func TestReversalUndoesEveryFeeItCaused(t *testing.T) {
 		total = total.Add(accrual)
 	}
 
-	if want := Amount(AED, "1.03"); !total.Equal(want) {
+	if want := Amount(AED, "1.02"); !total.Equal(want) {
 		t.Errorf("accruals total %s, want %s", total, want)
 	}
 }
@@ -313,10 +313,34 @@ func TestReplayClosesTheWindowWhereItStarted(t *testing.T) {
 		t.Fatalf("replayed %d days, want %d", len(r.Days), window)
 	}
 
-	want := map[string]string{"ACC-001": "AED 466.03", "ACC-002": "BHD 10.008"}
+	want := map[string]string{"ACC-001": "AED 466.02", "ACC-002": "BHD 10.008"}
 	for _, b := range r.Days[window-1].Balances {
 		if got := b.Closing.Display(); got != want[b.Account] {
 			t.Errorf("%s closed at %s, want %s", b.Account, got, want[b.Account])
 		}
+	}
+}
+
+// A balance too small to earn a whole minor unit in one day must still earn over
+// time. AED 5.00 earns 0.002 a day; rounded on its own that is nothing, and the
+// customer would earn nothing for as long as the money sat there.
+func TestSmallBalanceStillEarnsInterestOverTime(t *testing.T) {
+	const days = 100
+
+	l := New()
+	l.Open("ACC-001", AED)
+	l.Append(Entry{Account: "ACC-001", Kind: Credit, Amount: Amount(AED, "5.00"), BookedOn: 1, ValueDate: 1})
+	for d := Day(1); d <= days; d++ {
+		assess(l, "ACC-001", d, d)
+	}
+
+	total := Zero(AED)
+	for d := Day(1); d <= days; d++ {
+		total = total.Add(l.Assessed("ACC-001", d, InterestAssessment))
+	}
+
+	// 5.00 at 0.04% for 100 days is 0.20 exactly, with nothing to round away.
+	if want := Amount(AED, "0.20"); !total.Equal(want) {
+		t.Errorf("100 days on 5.00 earned %s, want %s", total, want)
 	}
 }

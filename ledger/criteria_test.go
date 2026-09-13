@@ -161,7 +161,7 @@ func TestCriterion6_E9ReturnsBalancesAndFees(t *testing.T) {
 		{3, "650.00"},
 		{4, "465.00"},
 		{5, "465.00"},
-		{6, "466.03"},
+		{6, "466.02"},
 	} {
 		if got, want := l.Closing("ACC-001", tc.day, window), Amount(AED, tc.closing); !got.Equal(want) {
 			t.Errorf("day %d restated = %s, want %s", tc.day, got, want)

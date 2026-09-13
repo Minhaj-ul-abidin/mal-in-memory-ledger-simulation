@@ -17,7 +17,7 @@ func TestRestatedViewDiffersFromWhatEachDayClosedAt(t *testing.T) {
 		{"AED 650.00", "BHD 0.000"},
 		{"AED 465.00", "BHD 0.000"},
 		{"AED 465.00", "BHD 10.000"},
-		{"AED 466.03", "BHD 10.008"},
+		{"AED 466.02", "BHD 10.008"},
 	}
 	if len(r.Restated) != len(want) {
 		t.Fatalf("restated %d days, want %d", len(r.Restated), len(want))
@@ -52,7 +52,7 @@ func TestPrintRendersBothViews(t *testing.T) {
 		"E8: authorization Auth-B declined",
 		"fee AED -25.00 (value date Day 2)",
 		"Restated at close of Day 6",
-		"AED 466.03",
+		"AED 466.02",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output is missing %q", want)

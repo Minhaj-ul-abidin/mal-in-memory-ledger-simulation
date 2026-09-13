@@ -46,10 +46,7 @@ func assess(l *Ledger, account string, day, asOf Day) {
 	}
 
 	accrued := l.Assessed(account, day, InterestAssessment)
-	earned := Zero(c)
-	if base := trigger.Add(target); base.IsPositive() {
-		earned = base.Rate(interestNum, interestDen)
-	}
+	earned := accruedThrough(l, account, day, asOf).Sub(accruedThrough(l, account, day-1, asOf))
 	if delta := earned.Sub(accrued); !delta.IsZero() {
 		kind := Accrual
 		if !accrued.IsZero() {
@@ -57,6 +54,33 @@ func assess(l *Ledger, account string, day, asOf Day) {
 		}
 		l.Append(Entry{Account: account, Kind: kind, Amount: delta, BookedOn: asOf, ValueDate: day})
 	}
+}
+
+// interestBase is what a day earns on: its closing before its own fee. A day that
+// closes negative takes the fee instead and earns nothing.
+func interestBase(l *Ledger, account string, day, asOf Day) Money {
+	standing := l.Assessed(account, day, FeeAssessment)
+	trigger := l.Closing(account, day, asOf).Sub(standing)
+	if trigger.IsNegative() {
+		return Zero(l.Currency(account))
+	}
+	return trigger
+}
+
+// accruedThrough is the interest earned from day 1 through day k, rounded once
+// over the whole run instead of once per day. A day's own accrual is the increment
+// of this total, so the parts still sum to it exactly.
+//
+// Rounding each day on its own confiscates anything under half a minor unit: AED
+// 5.00 earns 0.002 a day, rounds to nothing, and earns nothing for as long as it
+// sits there. Carrying the remainder forward is the rule the instalment split
+// already follows, applied across days rather than across parts.
+func accruedThrough(l *Ledger, account string, k, asOf Day) Money {
+	var numerator int64
+	for d := Day(1); d <= k; d++ {
+		numerator += interestBase(l, account, d, asOf).Units() * interestNum
+	}
+	return Minor(l.Currency(account), numerator).Rate(1, interestDen)
 }
 
 var accounts = []struct {
