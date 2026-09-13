@@ -10,7 +10,7 @@ var accounts = []struct {
 	{"ACC-002", BHD},
 }
 
-func Replay() Report {
+func Replay(events []Event) Report {
 	var r Report
 	for d := Day(1); d <= window; d++ {
 		day := DayReport{Day: d}

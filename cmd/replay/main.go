@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	ledger.Replay().Print(os.Stdout)
+	ledger.Replay(ledger.Stream()).Print(os.Stdout)
 }
