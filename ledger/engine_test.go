@@ -68,7 +68,7 @@ func TestDayCloseFeeAndInterest(t *testing.T) {
 		{"250.00", "0.00", "0.10", "positive, exact"},
 		{"650.00", "0.00", "0.26", "positive, exact"},
 		{"465.00", "0.00", "0.19", "0.186 rounds half-up"},
-		{"5.00", "0.00", "0.00", "0.002 rounds away to nothing"},
+		{"5.00", "0.00", "0.00", "0.002 is under a fils, carried to the next day"},
 		{"0.00", "0.00", "0.00", "zero is neither negative nor positive"},
 		{"-155.00", "-25.00", "0.00", "negative takes the fee and earns nothing"},
 	} {
@@ -285,7 +285,7 @@ func TestCapitalizationEqualsTheSumOfAccruals(t *testing.T) {
 		daily   []string
 		want    string
 	}{
-		{AED, "ACC-001", []string{"0.10", "0.10", "0.26", "0.19", "0.19", "0.19"}, "1.03"},
+		{AED, "ACC-001", []string{"0.10", "0.10", "0.26", "0.19", "0.18", "0.19"}, "1.02"},
 		{BHD, "ACC-002", []string{"0.000", "0.000", "0.000", "0.000", "0.004", "0.004"}, "0.008"},
 	} {
 		t.Run(tc.ccy.Code, func(t *testing.T) {
