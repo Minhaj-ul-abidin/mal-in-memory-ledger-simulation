@@ -7,10 +7,10 @@ import "testing"
 //
 // What it reveals: restatement is value-correct and risk-blind.
 //
-// Policy C exists so that final values do not depend on the order the news
-// arrived in. It delivers that. Every day closes where it would have closed had
-// E7 never been sent, and the three fees it caused are reversed. Criterion 6
-// holds, and the ledger is honest about money.
+// Back-valuation with restatement exists so that final values do not depend on
+// the order the news arrived in. It delivers that. Every day closes where it
+// would have closed had E7 never been sent, and the three fees it caused are
+// reversed. Criterion 6 holds, and the ledger is honest about money.
 //
 // But the bank's exposure was real. From the end of Day 5 the account stood at
 // -230.00, and the ledger acted on that: Auth-B was declined because available
