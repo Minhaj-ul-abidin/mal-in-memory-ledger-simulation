@@ -1,6 +1,9 @@
 package ledger
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // One event, three entries. Independently rounded parts would put 0.002 BHD in
 // the ledger that no event moved.
@@ -272,6 +275,35 @@ func TestReversalUndoesEveryFeeItCaused(t *testing.T) {
 
 	if want := Amount(AED, "1.02"); !total.Equal(want) {
 		t.Errorf("accruals total %s, want %s", total, want)
+	}
+}
+
+// E7 zeroes the interest on Days 2 to 4 and E9 restores it. Booking the restore
+// as another accrual would show those days accruing twice on the statement.
+func TestRestoredInterestIsAnAdjustmentNotASecondAccrual(t *testing.T) {
+	l, _, _ := replay(Stream())
+
+	for _, tc := range []struct {
+		day   Day
+		kinds []EntryKind
+		why   string
+	}{
+		{1, []EntryKind{Accrual}, "never reopened"},
+		{2, []EntryKind{Accrual, AccrualAdjustment, AccrualAdjustment}, "zeroed by E7, restored by E9"},
+		{3, []EntryKind{Accrual, AccrualAdjustment, AccrualAdjustment}, "zeroed by E7, restored by E9"},
+		{4, []EntryKind{Accrual, AccrualAdjustment, AccrualAdjustment}, "zeroed by E7, restored by E9"},
+		{5, []EntryKind{Accrual}, "earned nothing on the day, so the Day 6 line is still the first"},
+		{6, []EntryKind{Accrual}, "never reopened"},
+	} {
+		var got []EntryKind
+		for _, e := range l.Entries() {
+			if a, ok := e.Kind.assessment(); ok && a == InterestAssessment && e.Account == "ACC-001" && e.ValueDate == tc.day {
+				got = append(got, e.Kind)
+			}
+		}
+		if !slices.Equal(got, tc.kinds) {
+			t.Errorf("day %d interest lines = %v, want %v (%s)", tc.day, got, tc.kinds, tc.why)
+		}
 	}
 }
 

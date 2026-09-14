@@ -49,11 +49,22 @@ func assess(l *Ledger, account string, day, asOf Day) {
 	earned := accruedThrough(l, account, day, asOf).Sub(accruedThrough(l, account, day-1, asOf))
 	if delta := earned.Sub(accrued); !delta.IsZero() {
 		kind := Accrual
-		if !accrued.IsZero() {
+		if hasAccrual(l, account, day) {
 			kind = AccrualAdjustment
 		}
 		l.Append(Entry{Account: account, Kind: kind, Amount: delta, BookedOn: asOf, ValueDate: day})
 	}
+}
+
+// A day's first interest line is its accrual and every later one adjusts it, even
+// once the lines before it have netted back to zero.
+func hasAccrual(l *Ledger, account string, day Day) bool {
+	for _, e := range l.Entries() {
+		if e.Account == account && e.ValueDate == day && e.Kind == Accrual {
+			return true
+		}
+	}
+	return false
 }
 
 // interestBase is what a day earns on: its closing before its own fee. A day that
