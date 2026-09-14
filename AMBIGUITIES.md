@@ -27,3 +27,6 @@
 10. How an auth ends when nothing settles it : no expiry horizon is given, so an approved hold that is never settled has no defined end.
   *Assumption*: we model the full set anyway since Deliverable 2 asks for it. Settled, partially settled, declined, expired, released or voided, over settled, and settlement with no auth.
   Nothing here expires, Auth-B is declined so it never opens. Over settlement does not occur, we reject it like an unknown auth rather than guess.
+11. Settlement with no authorization : criterion 4 says a settlement on an auth the ledger has never seen is rejected and no funds leave. Clear as a rule, but it is not how card networks behave. A presentment can arrive with no matching auth, the auth expired and its hold was dropped, it was approved offline, or the id just does not match. By then the network has already settled with the bank, so rejecting it does not stop the money moving, it only keeps it off the customer's account. Auth-Z could also just be an auth from before the window, the stream only says there is none inside it.
+  *Assumption*: follow the spec. E6 on Auth-Z is rejected, the error is recorded and nothing is posted.
+  In PROD this would be a force post, debit the account and raise a chargeback if there are grounds, otherwise the bank carries 180.00 that no account shows.
