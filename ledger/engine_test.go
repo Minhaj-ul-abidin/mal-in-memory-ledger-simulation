@@ -117,6 +117,18 @@ func TestEarlierFeesCarryIntoLaterTriggers(t *testing.T) {
 	}
 }
 
+// The BHD fee is a chosen constant this stream never reaches (NUMBERS.md). A
+// change that starts charging it should fail here rather than pass silently.
+func TestBHDFeeIsNeverChargedByThisStream(t *testing.T) {
+	l, _, _ := replay(Stream())
+
+	for _, e := range l.Entries() {
+		if e.Account == "ACC-002" && (e.Kind == Fee || e.Kind == FeeReversal) {
+			t.Errorf("ACC-002 charged %s for value day %d, booked day %d", e.Amount.Display(), e.ValueDate, e.BookedOn)
+		}
+	}
+}
+
 // A backdated debit reopens its own day and every day after it. Three of those
 // close negative so three fees stand, and Day 3 escapes: the Day 3 credit clears
 // it even after the Day 2 fee has been taken out of it. This is criterion 2.
