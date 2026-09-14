@@ -17,3 +17,7 @@ These were reasoned out from the rules and walked through against the event stre
 1. As-of day end. A closed day is final and never reopens. Dropped because the fee E7 triggers still stands after E9 takes E7 back, the customer keeps paying for an entry the bank itself reversed. See AMBIGUITIES 4.
 2. Recalculate and rewrite. Reopen the day and correct the entries that are already sitting there. Dropped because it edits entries inside closed days, which append only does not allow. See AMBIGUITIES 4.
 3. float64 for amounts. Dropped for int64 minor units. A float cannot hold 0.1 exactly so a float ledger cannot represent its own smallest unit, and the error turns up later as dust that no event ever moved.
+
+### Approaches abandoned mid-build
+These were built and committed, then replaced once a test showed them wrong.
+1. Rounding each day's interest accrual on its own. Dropped because anything under half a minor unit is rounded away every day and never comes back, 5.00 earns 0.002 a day which rounds to 0.00, so a hundred days of it pays nothing instead of 0.20. The instalment split already refused to discard a residual and the interest was discarding one every day. Replaced by rounding the running total and booking each day as the increment of it, so the daily accruals still sum exactly to the capitalized credit. A literal read of "rounded daily accruals" rounds each day and gets 1.03, this gets 1.02 and closes at 466.02, exact interest is 1.018. See NUMBERS.md and WORKLOG 11:45 PM.
